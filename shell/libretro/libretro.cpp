@@ -2421,7 +2421,11 @@ bool retro_serialize(void *data, size_t size)
 	DEBUG_LOG(SAVESTATE, "retro_serialize %d bytes", (int)size);
 	std::lock_guard<std::mutex> lock(mtx_serialization);
 
-	if (!first_run)
+	// In non-threaded mode the SH4 is idle between retro_run() calls, so
+	// stop()/start() (which tear down and rebuild audio) are unnecessary.
+	// In threaded mode the background SH4 thread must be stopped first.
+	const bool needsStopStart = !first_run && config::ThreadedRendering;
+	if (needsStopStart)
 		try {
 			emu.stop();
 		} catch (const FlycastException& e) {
@@ -2435,20 +2439,21 @@ bool retro_serialize(void *data, size_t size)
 		result = true;
 	} catch (const Serializer::Exception& e) {
 		ERROR_LOG(SAVESTATE, "Saving state failed: %s", e.what());
-	} 
+	}
 
-	if (!first_run)
+	if (needsStopStart)
 		emu.start();
 
 	return result;
 }
 
-bool retro_unserialize(const void * data, size_t size)
+bool retro_unserialize(const void *data, size_t size)
 {
 	DEBUG_LOG(SAVESTATE, "retro_unserialize");
 	std::lock_guard<std::mutex> lock(mtx_serialization);
 
-	if (!first_run)
+	const bool needsStopStart = !first_run && config::ThreadedRendering;
+	if (needsStopStart)
 		try {
 			emu.stop();
 		} catch (const FlycastException& e) {
@@ -2459,8 +2464,8 @@ bool retro_unserialize(const void * data, size_t size)
 	try {
 		Deserializer deser(data, size);
 		emu.loadstate(deser);
-	    retro_audio_flush_buffer();
-		if (!first_run)
+		retro_audio_flush_buffer();
+		if (needsStopStart)
 			emu.start();
 
 		return true;
