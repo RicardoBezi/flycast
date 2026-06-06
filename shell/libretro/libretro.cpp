@@ -2409,7 +2409,11 @@ size_t retro_serialize_size()
 	if (!first_run)
 		emu.start();
 
-	return ser.size();
+	// GDR DMA and PIO read buffers serialize only live data, so the size grows
+	// during active disc reads (up to ~37 KB DMA + ~64 KB PIO). Add margin so
+	// RetroArch's fixed rewind buffer never overflows between this measurement
+	// and later retro_serialize() calls.
+	return ser.size() + 128_KB;
 }
 
 bool retro_serialize(void *data, size_t size)
